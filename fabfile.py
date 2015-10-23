@@ -1,10 +1,4 @@
 from fabric.api import*
-# run
-#jifrom fabric.api import env
-#jfrom fabric.api import prompt
-#jfrom fabric.api import execute
-#from fabric.api import sudo
-
 import boto3
 import time
 import sys
@@ -34,7 +28,7 @@ def print_dict(obj, nested_level=0, output=sys.stdout):
         print >> output, '%s%s' % (nested_level * spacing, obj)
 
 
-def _get_ec2_client():
+def get_ec2_client():
    client = boto3.client('ec2')
 
    if 'client' not in env:
@@ -47,8 +41,8 @@ def _get_ec2_client():
          raise IOError(msg)
    return env.client
 
-def _describe_instances():
-   client = _get_ec2_client()
+def describe_instances():
+   client = get_ec2_client()
    resp = client.describe_instances()
    i=1 
    instances=[] 
@@ -60,7 +54,7 @@ def _describe_instances():
    return instances
 
 def get_instance():
-   instances_summary()
+   inst_summary_all()
    prompt_text = "Choose instance from the above list: "    
 
    def valid_choice(input):
@@ -73,7 +67,6 @@ def get_instance():
    env.this_instance = env.instances[choice]
 
 def inst_keys_summary():
-   
    summary = "Top Level Key Summary: \n"
    summary += "Num\tKey\n"
    i=1
@@ -102,31 +95,30 @@ def get_key():
 
    
 @task
-def list_inst_detail():
+def inst_key_detail():
    get_instance()
    get_key()
    print "\n\nInstance: %s:  %s" % (env.this_instance['Num'],env.this_instance['InstanceId'])
    print "Key: %s " % env.this_key
    print_dict(env.this_instance[env.this_key])
 
-   
 
 @task
-def instances_full():
-   instances = _describe_instances()
+def inst_full_all():
+   instances = describe_instances()
    for inst in instances: 
       print inst
 
 @task
-def list_inst_full():
+def inst_full_info():
    get_instance()
    print "\n\nListing All Instance Information on Instance: %s:  %s" % (env.this_instance['Num'],env.this_instance['InstanceId'])
    print_dict(env.this_instance)
 
 
 @task
-def instances_summary():
-   instances = _describe_instances()
+def inst_summary_all():
+   instances = describe_instances()
    
    summary = "Instances Summary: \n"
    summary += "Num\tInstance Id\tImage Id\tInst Type\tStatus\tPrivate IP\tPublic IP\tVPC Id      \tKey\tZone\n"
@@ -154,16 +146,52 @@ def instances_summary():
    print summary
 
 @task
-def list_inst_tags():
+def inst_tags():
    get_instance()
-   print "\n\nListing Tags on Instance: %s:  %s" % (env.this_instance['Num'],env.this_instance['InstanceId'])
+   print "\n\nListing Tags on Instance Num: %s:  %s" % (env.this_instance['Num'],env.this_instance['InstanceId'])
    for tag in env.this_instance['Tags']: 
       print "%s => %s" % (tag['Key'],tag['Value']) 
 
 @task
-def list_inst_sec():
+def inst_sec_group():
    get_instance()
-   print "\n\nListing Security Groups on Instance: %s:  %s " % (env.this_instance['Num'],env.this_instance['InstanceId'])
+   print "\n\nListing Security Groups on Instance Num: %s:  %s " % (env.this_instance['Num'],env.this_instance['InstanceId'])
    for sec in env.this_instance['SecurityGroups']: 
       print "%s => %s" % (sec['GroupId'],sec['GroupName']) 
+
+@task
+def inst_start():
+   get_instance()
+   print "\n\nStarting Instance: %s:  %s " % (env.this_instance['Num'],env.this_instance['InstanceId'])
+   if env.this_instance['State']['Name'] == 'stopped':
+      client = get_ec2_client()
+      resp = client.start_instances(InstanceIds=[env.this_instance['InstanceId']])
+      if resp['ResponseMetadata']['HTTPStatusCode']==200 : 
+         print "OK Response on Start Command: %s  " % (resp['ResponseMetadata']['HTTPStatusCode'])
+         print "Instance is now: %s  " % (resp['StartingInstances'][0]['CurrentState']['Name'])
+      else: 
+         print "\n\nBad Response on Start Command: %s  " % (resp['ResponseMetadata']['HTTPStatusCode'])
+   else :
+      print "Commmand aborted - bad status on Instance Num: %s:  %s (%s) " % (env.this_instance['Num'],env.this_instance['InstanceId'], 
+            env.this_instance['State']['Name'])
+      print "Instance should be stopped before running start command."
+
+@task
+def inst_stop():
+   get_instance()
+   print "\n\nStopping Instance: %s:  %s " % (env.this_instance['Num'],env.this_instance['InstanceId'])
+   if env.this_instance['State']['Name'] == 'running':
+      client = get_ec2_client()
+      resp = client.stop_instances(InstanceIds=[env.this_instance['InstanceId']])
+      if resp['ResponseMetadata']['HTTPStatusCode']==200 : 
+         print "OK Response on Start Command: %s  " % (resp['ResponseMetadata']['HTTPStatusCode'])
+         print "Instance is now: %s  " % (resp['StoppingInstances'][0]['CurrentState']['Name'])
+      else: 
+         print "\n\nBad Response on Start Command: %s  " % (resp['ResponseMetadata']['HTTPStatusCode'])
+   else :
+      print "Commmand aborted - bad status on Instance Num: %s:  %s (%s) " % (env.this_instance['Num'],env.this_instance['InstanceId'], 
+            env.this_instance['State']['Name'])
+      print "Instance should be running to run stop command."
+
+
 

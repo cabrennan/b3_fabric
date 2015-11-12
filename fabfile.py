@@ -7,7 +7,8 @@ import sys
 from spur import SshShell
 from boto3 import session
 
-env.key_filename = ["~/.ssh/fabtest.pem"]
+#env.key_filename = ["~/.ssh/fabtest.pem"]
+env.key_filename = ["~/.ssh/RNA-Seq_v2_2014-11-06.pemfabtest.pem"]
 
 
 def hook_ssh(class_attributes, **kwargs):
@@ -162,12 +163,22 @@ def inst_full_info():
 def inst_summary():
    instances = describe_instances()
    
-   summary = "Instances Summary: \n"
-   summary += "Num\tInstance Id\tImage Id\tInst Type\tStatus\tPrivate IP\tPublic IP\tVPC Id      \tKey\tZone\n"
+   summary = '{:>4}'.format("Num") + "\t" 
+   summary += '{:>10}'.format("Inst Id") + "\t" 
+   summary += '{:>12}'.format("Image Id") + "\t" 
+   summary += '{:>24}'.format("Name") + "\t" 
+   summary += '{:>10}'.format("Type") + "\t" 
+   summary += '{:>10}'.format("Status") + "\t" 
+   summary += '{:>15}'.format("Priv IP") + "\t" 
+   summary += '{:>15}'.format("Pub IP") + "\t" 
+   summary += '{:>13}'.format("VPC ID") + "\t" 
+   summary += '{:>12}'.format("Key") + "\t" 
+   summary += '{:>12}'.format("Zone") + "\n" 
    for inst in instances :
-      public="NULL     "
-      private="NULL     "
-      vpcId="NULL    "
+      public="NULL"
+      private="NULL"
+      vpcId="NULL"
+      name="NULL"
       if 'PublicIpAddress' in inst:
          public=inst['PublicIpAddress']
       if 'PrivateIpAddress' in inst:
@@ -181,15 +192,25 @@ def inst_summary():
       keys=""
       for key in inst['KeyName']:
          keys+=key
-
-      summary += "%s\t" % (inst['Num'])
-      summary += "%s\t%s\t" % (inst['InstanceId'], inst['ImageId'])
-      summary += "%s\t%s\t" % (inst['InstanceType'], inst['State']['Name'])
-      summary += "%s\t%s\t" % (private, public)
+     
+      if 'Tags' in inst:  
+         for tag in inst['Tags']: 
+            if tag['Key'] == 'Name':
+               name = tag['Value']
+        
+   
+      summary += '{:>4}'.format(inst['Num']) + "\t" 
+      summary += '{:>10}'.format(inst['InstanceId']) + "\t" 
+      summary += '{:>12}'.format(inst['ImageId']) + "\t" 
+      summary += '{:>24}'.format(name) + "\t" 
+      summary += '{:>10}'.format(inst['InstanceType']) + "\t" 
+      summary += '{:>10}'.format(inst['State']['Name']) + "\t" 
+      summary += '{:>15}'.format(private) + "\t" 
+      summary += '{:>15}'.format(public) + "\t" 
+      summary += '{:>13}'.format(vpcId) + "\t" 
+      summary += '{:>12}'.format(keys) + "\t" 
+      summary += '{:>12}'.format(inst['Placement']['AvailabilityZone']) + "\n" 
       
-      summary += "%s\t" % (vpcId)
-      summary += "%s\t%s\t" % (keys,inst['Placement']['AvailabilityZone'])
-      summary +="\n"
    print summary
 
 @task
@@ -251,7 +272,6 @@ def get_login(inst) :
    return "stuff"
 
 
-
 @task
 def scp_to_inst():
    get_instance()
@@ -309,4 +329,54 @@ def scp_to_inst():
       print "Instance must be running to sync data."
    
 
+@task
+def scp_from_inst():
+   get_instance()
+   if env.this_instance['State']['Name'] == 'running':
+
+      priv_ip=""
+      pub_ip=""
+      nat=False
+      for interfaces in env.this_instance['NetworkInterfaces'] :
+         print_dict(interfaces)
+         if 'PrivateIpAddresses' in interfaces:
+            priv_ip = interfaces['PrivateIpAddresses'][0]['PrivateIpAddress']
+         if 'Association' in interfaces:
+            pub_ip = interfaces['Association']['PublicIp']
+    
+      def valid_choice(input):
+         choice = int(input)
+         if not choice in range(1, len(env.instances) + 1):
+            raise ValueError("%d is not a valid choice" % choice)
+         return choice -1
+
+      if pub_ip == "":
+         nat=True
+         pub_prompt = "Please choose a public NAT instance: "
+         choice=prompt(pub_prompt, validate=valid_choice)
+         pub_instance  = env.instances[choice]
+         for interface in pub_instance['NetworkInterfaces'] :
+            print_dict(interface)
+            if 'Association' in interface:
+               pub_ip = interface['Association']['PublicIp']
+
+      pub='ec2-user'
+      priv = 'ubuntu'
+
+      local_prompt = "Please enter local_dir: "
+      remote_prompt = "Please enter remote_dir: "
+
+      def validation(input): 
+        dir=(input)
+        return dir
+        
+      remote_dir = prompt(remote_prompt, validate=validation)
+      local_dir = prompt(local_prompt, validate=validation)
+
+      if nat: 
+         cmd = 'scp -o ProxyCommand=\"ssh {pub}@{pub_ip} nc {priv_ip} 22\" -r {priv}@{priv_ip}:{remote_dir} {local_dir}'.format(**vars())
+      else: 
+         cmd = 'scp -r {pub}@{pub_ip}:/{remote_dir} {local_dir}'.format(**vars())
+      print cmd
+      local(cmd)
 

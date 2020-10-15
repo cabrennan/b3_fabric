@@ -7,9 +7,7 @@ import sys
 from spur import SshShell
 from boto3 import session
 
-#env.key_filename = ["~/.ssh/fabtest.pem"]
-env.key_filename = ["~/.ssh/RNA-Seq_v2_2014-11-06.pemfabtest.pem"]
-
+env.key_filename = ["~/.ssh/fabtest.pem"]
 
 def hook_ssh(class_attributes, **kwargs):
     def run(self, command):
